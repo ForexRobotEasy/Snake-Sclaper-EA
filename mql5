@@ -1,0 +1,127 @@
+mql5
+//+------------------------------------------------------------------+
+//|                                               Snake Scalper EA   |
+//|                                   Developed by Forex Robot Easy Team |
+//|                                      Website: forexroboteasy.com   |
+//+------------------------------------------------------------------+
+
+// Include necessary libraries and define parameters
+#include <Trade\Trade.mqh>
+#include <Trade\PositionInfo.mqh>
+
+input string Symbol1 = 'EURUSD';
+input string Symbol2 = 'USDJPY';
+input string Symbol3 = 'GBPUSD';
+
+input double LotSize = 0.01;
+input double StopLoss = 50; // in points
+input double TakeProfit = 100; // in points
+input double TrailingStop = 20; // in points
+
+input int MaxSpread = 3; // maximum allowed spread in points
+input int Slippage = 3; // maximum allowed slippage in points
+
+// Define trade variables
+CTrade trade;
+CPositionInfo positionInfo;
+
+//+------------------------------------------------------------------+
+//| Expert initialization function                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+{
+    // Set up trade parameters
+    trade.SetExpertMagicNumber(123456);
+    trade.SetDeviationInPoints(Slippage);
+
+    return(INIT_SUCCEEDED);
+}
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization function                                 |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+{
+    // Perform necessary cleanup actions
+}
+
+//+------------------------------------------------------------------+
+//| Expert tick function                                             |
+//+------------------------------------------------------------------+
+void OnTick()
+{
+    // Check if market conditions are suitable for trading
+    if(IsMarketConditionsSuitable())
+    {
+        ExecuteScalpingStrategy();
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Check if market conditions are suitable for trading              |
+//+------------------------------------------------------------------+
+bool IsMarketConditionsSuitable()
+{
+    // Check if spread is within acceptable range
+    double spread = SymbolInfoDouble(_Symbol, SYMBOL_SPREAD);
+    if(spread > MaxSpread)
+    {
+        return false;
+    }
+
+    // Check if there are any open positions
+    if(positionInfo.Total() > 0)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Execute scalping strategy based on market conditions             |
+//+------------------------------------------------------------------+
+void ExecuteScalpingStrategy()
+{
+    // Place buy stop order at breakout level
+    double breakoutLevel = SymbolInfoDouble(_Symbol, SYMBOL_ASK) + SymbolInfoDouble(_Symbol, SYMBOL_SPREAD) + StopLoss;
+    trade.BuyStop(LotSize, breakoutLevel, breakoutLevel - StopLoss, breakoutLevel + TakeProfit);
+
+    // Place sell stop order at breakout level
+    trade.SellStop(LotSize, breakoutLevel, breakoutLevel + StopLoss, breakoutLevel - TakeProfit);
+
+    // Check if trailing stop functionality is enabled
+    if(TrailingStop > 0)
+    {
+        AdjustTrailingStop();
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Adjust trailing stop levels based on market conditions           |
+//+------------------------------------------------------------------+
+void AdjustTrailingStop()
+{
+    // Check if any positions are open
+    if(positionInfo.Total() > 0)
+    {
+        for(int i = 0; i < positionInfo.Total(); i++)
+        {
+            // Get position ticket
+            ulong ticket = positionInfo.GetTicket(i);
+
+            // Get position type
+            ENUM_POSITION_TYPE positionType = positionInfo.GetPositionType(ticket);
+
+            // Check if position is in profit
+            if(positionInfo.GetProfit(ticket) > 0)
+            {
+                // Calculate new stop loss level
+                double newStopLoss = NormalizeDouble(positionInfo.GetOpenPrice(ticket) + TrailingStop * _Point, _Digits);
+
+                // Modify the position's stop loss level
+                trade.PositionModify(ticket, newStopLoss, positionInfo.GetTakeProfit(ticket));
+            }
+        }
+    }
+}
